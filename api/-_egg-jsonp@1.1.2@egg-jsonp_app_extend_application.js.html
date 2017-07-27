@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>_egg-jsonp@1.1.2@egg-jsonp/app/extend/application.js - Documentation</title>
+
+    <script src="scripts/prettify/prettify.js"></script>
+    <script src="scripts/prettify/lang-css.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/ionicons.min.css">
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+<body>
+
+<input type="checkbox" id="nav-trigger" class="nav-trigger" />
+<label for="nav-trigger" class="navicon-button x">
+  <div class="navicon"></div>
+</label>
+
+<label for="nav-trigger" class="overlay"></label>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2>
+  <h3>Egg</h3>
+  <ul>
+    <li>
+      <a href="Egg.html">Egg</a>
+      <a href="Application.html">Application</a>
+      <a href="Context.html">Context</a>
+      <a href="Request.html">Request</a>
+      <a href="Response.html">Response</a>
+    </li>
+  </ul>
+  <h3>Classes</h3><ul><li><a href="Config.html">Config</a><ul class='members'><li data-type='member'><a href="Config.html#baseDir">baseDir</a></li><li data-type='member'><a href="Config.html#bodyParser">bodyParser</a></li><li data-type='member'><a href="Config.html#confusedConfigurations">confusedConfigurations</a></li><li data-type='member'><a href="Config.html#dump">dump</a></li><li data-type='member'><a href="Config.html#env">env</a></li><li data-type='member'><a href="Config.html#HOME">HOME</a></li><li data-type='member'><a href="Config.html#hostHeaders">hostHeaders</a></li><li data-type='member'><a href="Config.html#httpclient">httpclient</a></li><li data-type='member'><a href="Config.html#i18n">i18n</a></li><li data-type='member'><a href="Config.html#ipHeaders">ipHeaders</a></li><li data-type='member'><a href="Config.html#jsonp">jsonp</a></li><li data-type='member'><a href="Config.html#keys">keys</a></li><li data-type='member'><a href="Config.html#logger">logger</a></li><li data-type='member'><a href="Config.html#logrotator">logrotator</a></li><li data-type='member'><a href="Config.html#middleware">middleware</a></li><li data-type='member'><a href="Config.html#multipart">multipart</a></li><li data-type='member'><a href="Config.html#name">name</a></li><li data-type='member'><a href="Config.html#notfound">notfound</a></li><li data-type='member'><a href="Config.html#pkg">pkg</a></li><li data-type='member'><a href="Config.html#protocolHeaders">protocolHeaders</a></li><li data-type='member'><a href="Config.html#proxy">proxy</a></li><li data-type='member'><a href="Config.html#rundir">rundir</a></li><li data-type='member'><a href="Config.html#security">security</a></li><li data-type='member'><a href="Config.html#siteFile">siteFile</a></li><li data-type='member'><a href="Config.html#static">static</a></li><li data-type='member'><a href="Config.html#view">view</a></li><li data-type='member'><a href="Config.html#watcher">watcher</a></li><li data-type='member'><a href="Config.html#.workerStartTimeout">workerStartTimeout</a></li></ul></li><li><a href="I18n.html">I18n</a></li></ul><h3>Namespaces</h3><ul><li><a href="Egg.html">Egg</a><ul class='members'><li data-type='member'><a href="Egg.html#Agent">Agent</a></li><li data-type='member'><a href="Egg.html#AgentWorkerLoader">AgentWorkerLoader</a></li><li data-type='member'><a href="Egg.html#Application">Application</a></li><li data-type='member'><a href="Egg.html#AppWorkerLoader">AppWorkerLoader</a></li><li data-type='member'><a href="Egg.html#BaseContextClass">BaseContextClass</a></li><li data-type='member'><a href="Egg.html#Controller">Controller</a></li><li data-type='member'><a href="Egg.html#Service">Service</a></li></ul></li></ul>
+</nav>
+
+<div id="main">
+    
+    <h1 class="page-title">_egg-jsonp@1.1.2@egg-jsonp/app/extend/application.js</h1>
+    
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>'use strict';
+
+const jsonpBody = require('jsonp-body');
+const is = require('is-type-of');
+const url = require('url');
+
+module.exports = {
+  /**
+   * return a middleware to enable jsonp response.
+   * will do some security check inside.
+   * @param  {Object} options jsonp options. can override `config.jsonp`.
+   * @return {Function} jsonp middleware
+   * @public
+   */
+  jsonp(options) {
+    const defaultOptions = this.config.jsonp;
+    options = Object.assign({}, defaultOptions, options);
+    if (!Array.isArray(options.callback)) options.callback = [ options.callback ];
+
+    const csrfEnable = this.plugins.security &amp;&amp; this.plugins.security.enable // security enable
+       &amp;&amp; this.config.security.csrf &amp;&amp; this.config.security.csrf.enable !== false // csrf enable
+      &amp;&amp; options.csrf;  // jsonp csrf enabled
+
+    const validateReferrer = options.whiteList &amp;&amp; createValidateReferer(options.whiteList);
+
+    if (!csrfEnable &amp;&amp; !validateReferrer) {
+      this.coreLogger.warn('[egg-jsonp] SECURITY WARNING!! csrf check and referrer check are both closed!');
+    }
+    /**
+     * jsonp request security check, pass if
+     *
+     * 1. hit referrer white list
+     * 2. or pass csrf check
+     * 3. both check are disabled
+     *
+     * @param  {Context} ctx request context
+     */
+    function securityAssert(ctx) {
+      // all disabled. don't need check
+      if (!csrfEnable &amp;&amp; !validateReferrer) return;
+
+      // pass referrer check
+      const referrer = ctx.get('referrer');
+      if (validateReferrer &amp;&amp; validateReferrer(referrer)) return;
+      if (csrfEnable &amp;&amp; validateCsrf(ctx)) return;
+
+      const err = new Error('jsonp request security validate failed');
+      err.referrer = referrer;
+      err.status = 403;
+      throw err;
+    }
+
+    return function* jsonp(next) {
+      // before handle request, must do some security checks
+      securityAssert(this);
+
+      yield next;
+
+      // generate jsonp body
+      const jsonpFunction = getJsonpFunction(this.query, options.callback);
+      if (jsonpFunction) {
+        this.set('x-content-type-options', 'nosniff');
+        this.type = 'js';
+        const body = this.body === undefined ? null : this.body;
+        // protect from jsonp xss
+        this.body = jsonpBody(body, jsonpFunction, options);
+      }
+    };
+  },
+};
+
+function createValidateReferer(whiteList) {
+  if (!Array.isArray(whiteList)) whiteList = [ whiteList ];
+
+  return function(referrer) {
+    let parsed = null;
+    for (const item of whiteList) {
+      if (is.regExp(item) &amp;&amp; item.test(referrer)) {
+        // regexp(/^https?:\/\/github.com\//): test the referrer with item
+        return true;
+      }
+
+      parsed = parsed || url.parse(referrer);
+      const hostname = parsed.hostname || '';
+
+      if (item[0] === '.' &amp;&amp;
+        (hostname.endsWith(item) || hostname === item.slice(1))) {
+        // string start with `.`(.github.com): referrer's hostname must ends with item
+        return true;
+      } else if (hostname === item) {
+        // string not start with `.`(github.com): referrer's hostname must strict equal to item
+        return true;
+      }
+    }
+
+    return false;
+  };
+}
+
+function validateCsrf(ctx) {
+  try {
+    ctx.assertCsrf();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function getJsonpFunction(query, callbacks) {
+  for (const callback of callbacks) {
+    if (query[callback]) return query[callback];
+  }
+}
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.5.3</a> on Thu Jul 27 2017 08:51:34 GMT+0000 (UTC) using the Minami theme.
+</footer>
+
+<script>prettyPrint();</script>
+<script src="scripts/linenumber.js"></script>
+</body>
+</html>
